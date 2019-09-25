@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 from models import dbcontrol
 import math
-
+import os
 
 
 class StockGetTop(object):
@@ -20,9 +20,67 @@ class StockGet(StockGetTop):
     def __init__(self, stocknum = None):
         super().__init__(stocknum)
         get_stock_f = setting.GET_STOCK_F
+
         if get_stock_f == 0:
-            self.stockgetdayjsm(datetime.date(self.Y-1, self.M, self.D),datetime.date(self.Y, self.M, self.D), self.stocknum)
-            self.stockgetweekjsm(datetime.date(self.Y-2, self.M, self.D),datetime.date(self.Y, self.M, self.D), self.stocknum)
+
+            filepath=setting.HOME_PATH + str(self.stocknum) + ".csv"
+
+            #過去に銘柄の株価を取得したデータが存在する場合
+            if os.path.exists(filepath)==True :
+            #指定した銘柄についてすでに取得した株価データをcsvファイルより読み出す。                
+                self.pre_db_s = pd.read_csv(setting.HOME_PATH + str(self.stocknum) + ".csv", index_col=1, parse_dates=True , names=["Date"])      
+                self.pre_db_sw = pd.read_csv(setting.HOME_PATH + str(self.stocknum) + ".week.csv", index_col=1, parse_dates=True , names=["Date"])    
+                #print("self.pre_db_s")
+                #print(self.pre_db_s)     
+                #print("self.predb_s.tail(1)[Date][0]")             
+                ##print(self.pre_db_s.tail(1)["Date"][0]) #最新の株価の日付を取得する
+                #print(self.pre_db_s.tail(1)["Date"][0]) #最新の株価の日付を取得する            
+                self.update_day=self.pre_db_s.tail(1)["Date"][0] #csvファイルに記録された最新の株価の日付を取得する
+
+
+
+            else :
+            #新規の銘柄の場合は、全期間の株価を取得する。
+                self.stockgetdayjsm(datetime.date(self.Y-1, self.M, self.D),datetime.date(self.Y, self.M, self.D), self.stocknum)
+                self.stockgetweekjsm(datetime.date(self.Y-2, self.M, self.D),datetime.date(self.Y, self.M, self.D), self.stocknum) 
+                self.pre_db_s = pd.read_csv(setting.HOME_PATH + str(self.stocknum) + ".csv", index_col=1, parse_dates=True , names=["Date"])      
+                self.pre_db_sw = pd.read_csv(setting.HOME_PATH + str(self.stocknum) + ".week.csv", index_col=1, parse_dates=True , names=["Date"])      
+                #既存銘柄はcsvファイルを読み出しているので、新規銘柄も同じ形式にしたいのでcsvにダンプしてcsvで読み出すことにした。20190923          
+                ##self.pre_db_s=self.db_s
+                ##self.pre_db_sw=self.db_sw
+                #print("self.pre_db_s")
+                #print(self.pre_db_s)     
+                #print("self.predb_s.tail(1)[Date][0]")             
+                ##print(self.pre_db_s.tail(1)["Date"][0]) #最新の株価の日付を取得する
+                #print(self.pre_db_s.tail(1)["Date"][0]) #最新の株価の日付を取得する            
+                self.update_day=self.pre_db_s.tail(1)["Date"][0] #csvファイルに記録された最新の株価の日付を取得する
+
+      
+            dt = datetime.datetime.strptime(self.update_day, '%Y-%m-%d') #日付の形式変換
+            self.SY=dt.year #dt(最新の株価の日付)の年を取得
+            self.SM=dt.month #dt(最新の株価の日付)の月を取得
+            self.SD=dt.day #dt(最新の株価の日付)の日を取得
+            #print("self.SY")        
+            #print(self.SY)
+            #print("self.SM")        
+            #print(self.SM)     
+            #print("self.SD")            
+            #print(self.SD) 
+
+            #db_sのindex列を削除する。以降のcodeと合わせるため
+            self.db_s = pd.read_csv(setting.HOME_PATH + str(self.stocknum) + ".csv", index_col=0, parse_dates=True , names=["Stock"])
+            self.db_sw = pd.read_csv(setting.HOME_PATH + str(self.stocknum) + ".week.csv", index_col=0, parse_dates=True,names=["Stock"])
+            #print("self.db_s")
+            #print(self.db_s)
+
+
+            #self.stockgetdayjsm(datetime.date(self.Y-1, self.M, self.D),datetime.date(self.Y, self.M, self.D), self.stocknum)
+            #株価データ差分を取得する(日足)
+            self.stockgetdayjsm(datetime.date(self.SY, self.SM, self.SD),datetime.date(self.Y, self.M, self.D), self.stocknum)
+            #self.stockgetweekjsm(datetime.date(self.Y-2, self.M, self.D),datetime.date(self.Y, self.M, self.D), self.stocknum)
+            #株価データ差分を取得する(週足)
+            self.stockgetweekjsm(datetime.date(self.SY, self.SM, self.SD)- datetime.timedelta(days=7),datetime.date(self.Y, self.M, self.D), self.stocknum)
+ 
         elif get_stock_f == 1:
             #print(setting.HOME_PATH + str(self.stocknum) + ".csv")
             self.db_s = pd.read_csv(setting.HOME_PATH + str(self.stocknum) + ".csv", index_col=0, parse_dates=True , names=["Stock"])
@@ -36,8 +94,27 @@ class StockGet(StockGetTop):
         close_stock = [data.close for data in stock]  # 終値の取得
         date_stock = [data.date for data in stock]  # 日付の取得
         db_s = Series(close_stock, date_stock)  # 日付と終値をドッキング
-        self.db_s = db_s.sort_index(ascending=True)  # 古い順に並び替える。
-        self.db_s.to_csv(setting.HOME_PATH + str(stock_num) + ".csv")
+        self.add_db_s = db_s.sort_index(ascending=True)  # 古い順に並び替える。
+        self.add_db_s = DataFrame(self.add_db_s, columns=['Stock'])  #列名'Stock'を付与する。
+        #print("self.add_db_s")
+        #print(self.add_db_s)  
+        #print("self.db_s")
+        #print(self.db_s)
+
+        #(try-catch)新規の銘柄の場合はself.db_sが存在しないため、except以降の処理:self.db_s=self.add_db_sとする
+        try:
+            self.db_s=self.db_s.append(self.add_db_s) #既存の株価に新規に追加した株価を追加する
+            self.db_s = self.db_s.groupby(level=0)   #重複行があれば削除する
+            self.db_s = self.db_s.last()             #重複行があれば削除する
+
+
+        except AttributeError:
+            self.db_s=self.add_db_s
+
+
+        #print("self.db_s")         
+        #print(self.db_s)             
+        self.db_s.to_csv(setting.HOME_PATH + str(stock_num) + ".csv",header=False) #headerなしでcsvファイルに書き出し
         self.db_s = DataFrame(self.db_s, columns=['Stock'])  #列名'Stock'を付与する。
         return self.db_s
 
@@ -48,8 +125,24 @@ class StockGet(StockGetTop):
         close_stock = [data.close for data in stock]   #終値の取得
         date_stock = [data.date for data in stock]      #日付の取得
         db_sw = Series(close_stock, date_stock)   #日付と終値をドッキング
-        self.db_sw = db_sw.sort_index(ascending=True) #古い順に並び替える。
-        self.db_sw.to_csv(setting.HOME_PATH + str(stock_num) +".week.csv")
+        self.add_db_sw = db_sw.sort_index(ascending=True) #古い順に並び替える。
+        self.add_db_sw = DataFrame(self.add_db_sw, columns=['Stock'])  #列名'Stock'を付与する。
+        #print("self.add_db_sw")
+        #print(self.add_db_sw)  
+        #print("self.db_sw")
+        #print(self.db_sw)
+
+       #(try-catch)新規の銘柄の場合はself.db_sが存在しないため、except以降の処理:self.db_sw=self.add_db_swとする        
+        try:     
+            self.db_sw=self.db_sw.append(self.add_db_sw) #既存の株価に新規に追加した株価を追加する
+            self.db_sw=self.db_sw.groupby(level=0)   #重複行があれば削除する
+            self.db_sw= self.db_sw.last()             #重複行があれば削除する   
+        #print("self.db_sw")
+        #print(self.db_sw)           
+        except AttributeError:
+            self.db_sw=self.add_db_sw
+
+        self.db_sw.to_csv(setting.HOME_PATH + str(stock_num) +".week.csv",header=False)
         self.db_sw = DataFrame(self.db_sw, columns=['Stock'])  #列名'Stock'を付与する。
         return self.db_sw
 
@@ -154,6 +247,8 @@ class Technical(StockGet):
     def getsymbol(self, mat):
         mat = DataFrame(mat.dropna())
         self.dmatstock = DataFrame(mat, columns=['Stock'])
+        #print("self.dmatstock")
+        #print(self.dmatstock)       
         self.stock_old = self.dmatstock.head(1)  # 1年前の株価を取得
         self.stock_now = self.dmatstock.tail(1)  # 本日の株価を取得する
         self.stock_exp =100* math.log(self.stock_now['Stock'][0]/self.stock_old['Stock'][0] , math.e)   #1年前の株価と本日の株価の変化率を計算
@@ -207,8 +302,8 @@ class Technical(StockGet):
         self.getinfo_of_stock = self.getinfo_of_stock.set_index('STOCK_NUM')  # STOCK_NUM列をindexに指定した
         #print("1")
         self.stockinfo = DataFrame(self.getinfo_of_stock['LASTYEAR_PROFIT_PER_STOCK'])  # 'LASTYEAR_PROFIT_PER_STOCK'列のみを抽出
-        print("self.stockinfo")
-        print(self.stockinfo)
+        #print("self.stockinfo")
+        #print(self.stockinfo)
         self.bps = self.stockinfo['LASTYEAR_PROFIT_PER_STOCK'][int(self.stocknum)]  # インデックス stockget_numの'LASTYEAR_PROFIT_PER_STOCK'列を取り出す
         #print("self.bps")
         #print(self.bps)
